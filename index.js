@@ -1,11 +1,31 @@
+var utf32to16 = v => {
+	var t = v.split('+');
+  var s = String.fromCodePoint('0x'+t[1]);
+  return [s.charCodeAt(0), s.charCodeAt(1) || s.charCodeAt(0)]
+};
+
+var EmojiCodePoints = [];
+var emojiCombinations = [
+	// 'U+1F468 U+200D U+2695 U+FE0F',  // man health worker
+	'U+1F468 U+1F3FB U+200D U+2695 U+FE0F', // man health worker: light skin tone
+];
+
+EmojiCodePointSeries = emojiCombinations.map(rowString => {
+	var row = rowString.split(' ');
+	return row.map(utf32 => {
+		return utf32to16(utf32);
+	});
+});
+
+
 /*
-Breaks a Javascript string into individual user-perceived "characters" 
+Breaks a Javascript string into individual user-perceived "characters"
 called extended grapheme clusters by implementing the Unicode UAX-29 standard, version 8.0.0
 
 Usage:
 var splitter = new GraphemeSplitter();
 //returns an array of strings, one string for each grapheme cluster
-var graphemes = splitter.splitGraphemes(string); 
+var graphemes = splitter.splitGraphemes(string);
 
 */
 function GraphemeSplitter(){
@@ -21,7 +41,7 @@ function GraphemeSplitter(){
 		LV = 9,
 		LVT = 10,
 		Other = 11;
-		
+
 	// Private function, gets a Unicode code point from a JavaScript UTF-16 string
 	// handling surrogate pairs appropriately
 	function codePointAt(str, idx){
@@ -31,7 +51,7 @@ function GraphemeSplitter(){
 		code = str.charCodeAt(idx);
 
 		// if a high surrogate
-		if (0xD800 <= code && code <= 0xDBFF && 
+		if (0xD800 <= code && code <= 0xDBFF &&
 			idx < str.length - 1){
 			var hi = code;
 			var low = str.charCodeAt(idx + 1);
@@ -40,7 +60,7 @@ function GraphemeSplitter(){
 			}
 			return hi;
 		}
-		
+
 		// if a low surrogate
 		if (0xDC00 <= code && code <= 0xDFFF &&
 			idx >= 1){
@@ -51,13 +71,13 @@ function GraphemeSplitter(){
 			}
 			return low;
 		}
-		
-		//just return the char if an unmatched surrogate half or a 
+
+		//just return the char if an unmatched surrogate half or a
 		//single-char codepoint
 		return code;
 	}
-	
-	// Private function, eturns whether a break is allowed between the 
+
+	// Private function, eturns whether a break is allowed between the
 	// two given grapheme breaking classes
 	function shouldBreak(previous, current){
 		// GB3. CR X LF
@@ -73,17 +93,17 @@ function GraphemeSplitter(){
 			return true;
 		}
 		// GB6. L X (L|V|LV|LVT)
-		else if(previous == L && 
+		else if(previous == L &&
 			(current == L || current == V || current == LV || current == LVT)){
 			return false;
 		}
 		// GB7. (LV|V) X (V|T)
-		else if((previous == LV || previous == V) && 
+		else if((previous == LV || previous == V) &&
 			(current == V || current == T)){
 			return false;
 		}
 		// GB8. (LVT|T) X (T)
-		else if((previous == LVT || previous == T) && 
+		else if((previous == LVT || previous == T) &&
 			current == T){
 			return false;
 		}
@@ -102,7 +122,7 @@ function GraphemeSplitter(){
 		// GB9b. Prepend X (there are currently no characters with this class)
 		// else if previous is Prepend
 		//   return false
-		
+
 		// GB10. Any ÷ Any
 		return true;
 	}
@@ -118,24 +138,42 @@ function GraphemeSplitter(){
 		if(index >= string.length - 1){
 			return string.length;
 		}
-		var prev = getGraphemeBreakProperty(codePointAt(string, index));
+		var prevCodePoint = codePointAt(string, index);
+		var prev = getGraphemeBreakProperty(prevCodePoint);
+
 		for (var i = index + 1; i < string.length; i++) {
 			// check for already processed low surrogates
 			if(0xd800 <= string.charCodeAt(i - 1) && string.charCodeAt(i - 1) <= 0xdbff &&
 				0xdc00 <= string.charCodeAt(i) && string.charCodeAt(i) <= 0xdfff){
 				continue;
 			}
-		
-			var next = getGraphemeBreakProperty(codePointAt(string, i));
-			if(shouldBreak(prev, next)){
+
+			var nextCodePoint = codePointAt(string, i);
+			var next = getGraphemeBreakProperty(nextCodePoint);
+
+			var emojiMatches = EmojiCodePointSeries.filter((series, i) => {
+
+				return series.find((cp, i) => {
+					var prevMatch = cp[0] <= prevCodePoint && prevCodePoint <= cp[1]
+					var nextMatch = series[i+1] ? series[i+1][0] <= nextCodePoint && nextCodePoint <= series[i+1][1] : false;
+console.log(i, 'prevMatch && nextMatch', prevMatch, nextMatch)
+					return false && prevMatch && nextMatch;
+				});
+			});
+			console.log('emojiMatches', prevCodePoint, emojiMatches)
+			// if (prevCodePoint === 8205 &&  0xD83C <= nextCodePoint && nextCodePoint <= 0xDFEB) { //nextCodePoint === 127979
+			if (emojiMatches.length) { //nextCodePoint === 127979
+				console.log(nextCodePoint, next)
+			} else if(shouldBreak(prev, next)){
 				return i;
 			}
-			
+
+			prevCodePoint = nextCodePoint;
 			prev = next;
 		}
 		return string.length;
 	};
-	
+
 	// Breaks the given string into an array of grapheme cluster strings
 	this.splitGraphemes = function(str){
 		var res = [];
@@ -150,7 +188,7 @@ function GraphemeSplitter(){
 		}
 		return res;
 	};
-	
+
 	// Returns the number of grapheme clusters there are in the given string
 	this.countGraphemes = function(str){
 		var count = 0;
@@ -165,27 +203,27 @@ function GraphemeSplitter(){
 		}
 		return count;
 	};
-	
+
 	//given a Unicode code point, determines this symbol's grapheme break property
 	function getGraphemeBreakProperty(code){
-		
-		//grapheme break property for Unicode 8.0.0, 
+
+		//grapheme break property for Unicode 8.0.0,
 		//taken from http://www.unicode.org/Public/8.0.0/ucd/auxiliary/GraphemeBreakProperty.txt
 		//and adapted to JavaScript rules
-		
+
 		if(
 		0x000D == code // Cc       <control-000D>
 		){
 			return CR;
 		}
-		
+
 		if(
 		0x000A == code // Cc       <control-000A>
 		){
 			return LF;
 		}
-		
-		
+
+
 		if(
 		(0x0000 <= code && code <= 0x0009) || // Cc  [10] <control-0000>..<control-0009>
 		(0x000B <= code && code <= 0x000C) || // Cc   [2] <control-000B>..<control-000C>
@@ -221,8 +259,8 @@ function GraphemeSplitter(){
 		){
 			return Control;
 		}
-		
-		
+
+
 		if(
 		(0x0300 <= code && code <= 0x036F) || // Mn [112] COMBINING GRAVE ACCENT..COMBINING LATIN SMALL LETTER X
 		(0x0483 <= code && code <= 0x0487) || // Mn   [5] COMBINING CYRILLIC TITLO..COMBINING CYRILLIC POKRYTIE
@@ -516,18 +554,19 @@ function GraphemeSplitter(){
 		(0x1DA9B <= code && code <= 0x1DA9F) || // Mn   [5] SIGNWRITING FILL MODIFIER-2..SIGNWRITING FILL MODIFIER-6
 		(0x1DAA1 <= code && code <= 0x1DAAF) || // Mn  [15] SIGNWRITING ROTATION MODIFIER-2..SIGNWRITING ROTATION MODIFIER-16
 		(0x1E8D0 <= code && code <= 0x1E8D6) || // Mn   [7] MENDE KIKAKUI COMBINING NUMBER TEENS..MENDE KIKAKUI COMBINING NUMBER MILLIONS
-		(0xE0100 <= code && code <= 0xE01EF) // Mn [240] VARIATION SELECTOR-17..VARIATION SELECTOR-256
+		(0xE0100 <= code && code <= 0xE01EF) || // Mn [240] VARIATION SELECTOR-17..VARIATION SELECTOR-256
+		(0x1f3fb <= code && code <= 0x1f3ff) // Diversity Emoji with EMOJI MODIFIER FITZPATRICK 1-6
 		){
 			return Extend;
 		}
-		
-		
+
+
 		if(
 		(0x1F1E6 <= code && code <= 0x1F1FF) // So  [26] REGIONAL INDICATOR SYMBOL LETTER A..REGIONAL INDICATOR SYMBOL LETTER Z
 		){
 			return Regional_Indicator;
 		}
-		
+
 		if(
 		0x0903 == code || // Mc       DEVANAGARI SIGN VISARGA
 		0x093B == code || // Mc       DEVANAGARI VOWEL SIGN OOE
@@ -664,30 +703,30 @@ function GraphemeSplitter(){
 		){
 			return SpacingMark;
 		}
-		
-		
+
+
 		if(
 		(0x1100 <= code && code <= 0x115F) || // Lo  [96] HANGUL CHOSEONG KIYEOK..HANGUL CHOSEONG FILLER
 		(0xA960 <= code && code <= 0xA97C) // Lo  [29] HANGUL CHOSEONG TIKEUT-MIEUM..HANGUL CHOSEONG SSANGYEORINHIEUH
 		){
 			return L;
 		}
-		
+
 		if(
 		(0x1160 <= code && code <= 0x11A7) || // Lo  [72] HANGUL JUNGSEONG FILLER..HANGUL JUNGSEONG O-YAE
 		(0xD7B0 <= code && code <= 0xD7C6) // Lo  [23] HANGUL JUNGSEONG O-YEO..HANGUL JUNGSEONG ARAEA-E
 		){
 			return V;
 		}
-		
-		
+
+
 		if(
 		(0x11A8 <= code && code <= 0x11FF) || // Lo  [88] HANGUL JONGSEONG KIYEOK..HANGUL JONGSEONG SSANGNIEUN
 		(0xD7CB <= code && code <= 0xD7FB) // Lo  [49] HANGUL JONGSEONG NIEUN-RIEUL..HANGUL JONGSEONG PHIEUPH-THIEUTH
 		){
 			return T;
 		}
-		
+
 		if(
 		0xAC00 == code || // Lo       HANGUL SYLLABLE GA
 		0xAC1C == code || // Lo       HANGUL SYLLABLE GAE
@@ -1091,7 +1130,7 @@ function GraphemeSplitter(){
 		){
 			return LV;
 		}
-		
+
 		if(
 		(0xAC01 <= code && code <= 0xAC1B) || // Lo  [27] HANGUL SYLLABLE GAG..HANGUL SYLLABLE GAH
 		(0xAC1D <= code && code <= 0xAC37) || // Lo  [27] HANGUL SYLLABLE GAEG..HANGUL SYLLABLE GAEH
@@ -1495,9 +1534,9 @@ function GraphemeSplitter(){
 		){
 			return LVT;
 		}
-		
-		
-		
+
+
+
 		//all unlisted characters have a grapheme break property of "Other"
 		return Other;
 	}

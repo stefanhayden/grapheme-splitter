@@ -47,8 +47,28 @@ test('splitGraphemes returns properly split list from string', t => {
 
   testData.forEach( ({ input, expected }) => {
     const result = splitter.splitGraphemes(input);
-    
+
     t.deepLooseEqual(result, expected);
+  });
+
+  t.end();
+});
+
+test.only('splitGraphemes returns properly with diversity emoji', t => {
+  const splitter = new GraphemeSplitter();
+  var data = [
+    // '👊🏽',
+    // '👦🏻',
+    '👨🏻‍⚕️',
+    //'👩🏻‍⚕️'
+  ];
+
+  t.plan(data.length);
+
+  data.forEach( (input, i) => {
+    const result = splitter.splitGraphemes(input);
+console.log(result)
+    t.deepLooseEqual(result, [data[i]]);
   });
 
   t.end();
